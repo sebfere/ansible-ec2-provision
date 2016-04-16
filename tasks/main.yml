@@ -1,30 +1,44 @@
 ---
-- name: make one instance
-  local_action:
-    module: ec2
-    image: "{{ aws_image }}"
-    instance_type: "{{ aws_instance_type }}"
+- name: create instances
+  ec2:
     aws_access_key: "{{ aws_access_key }}"
     aws_secret_key: "{{ aws_secret_key }}"
-    keypair: "{{ aws_keypair }}"
-    count: "{{ aws_quantity }}"
-    instance_tags: "{{ aws_instance_tag }}"
+
     region: "{{ aws_region }}"
-    group: "{{ aws_group }}"
     vpc_subnet_id: "{{ aws_vpc_subnet }}"
+    group: "{{ aws_group }}"
+    key_name: "{{ aws_keypair }}"
+    
+    image: "{{ aws_image }}"
+    instance_type: "{{ aws_instance_type }}"
+    instance_tags: "{{ aws_instance_tags }}"
+    count: "{{ aws_instance_qty }}"
+
+    assign_public_ip: no    
+
+    # EBS–Optimized Instances
+    # http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/EBSOptimized.html
+    ebs_optimized: no
+
     wait: true
-  register: ec2_info
+  register: ec2
 
-- debug: var=ec2_info
-- debug: var=item
-  with_items: ec2_info.instance_ids
+- name: output from EC2
+  debug: var=ec2
 
-- add_host: hostname={{ item.public_ip }} groupname={{ app_name }}_{{ server_env }}
-  with_items: ec2_info.instances
+- name: list of EC2 instance ids
+  debug: var=item
+  with_items: ec2.instance_ids
 
-- name: wait for instances to listen on port:22
+- name: add instance to host inventory
+  add_host: hostname={{ item.public_ip }} groupname={{ aws_group }}
+  with_items: ec2.instances
+
+- name: wait for SSH connection to instances
   wait_for:
-    state: started
     host: "{{ item.public_dns_name }}"
     port: 22
-  with_items: ec2_info.instances
+    delay: 30
+    timeout: 300
+    state: started
+  with_items: ec2.instances
